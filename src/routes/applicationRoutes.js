@@ -6,7 +6,50 @@ import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Apply for adoption
+/**
+ * @swagger
+ * tags:
+ *   name: Applications
+ *   description: Adoption application management
+ */
+
+/**
+ * @swagger
+ * /api/applications:
+ *   post:
+ *     summary: Apply for pet adoption
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Application'
+ *           example:
+ *             petId: "507f1f77bcf86cd799439011"
+ *             userMessage: "I have a large backyard and experience with dogs."
+ *     responses:
+ *       201:
+ *         description: Application submitted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Application'
+ *       400:
+ *         description: Bad request (already applied or pet not found)
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/', authMiddleware, async (req, res) => {
   try {
     const { petId, userMessage } = req.body;
@@ -40,7 +83,46 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// Get user's applications
+/**
+ * @swagger
+ * /api/applications/my:
+ *   get:
+ *     summary: Get current user's applications
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User applications retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                     description: Application ID
+ *                   petId:
+ *                     type: string
+ *                     description: Pet ID
+ *                   petName:
+ *                     type: string
+ *                     description: Pet name
+ *                   status:
+ *                     type: string
+ *                     enum: [Pending, Approved, Rejected]
+ *                   appliedDate:
+ *                     type: string
+ *                     format: date-time
+ *                   adminNotes:
+ *                     type: string
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/my', authMiddleware, async (req, res) => {
   try {
     const applications = await Application.find({ userId: req.user.id })
@@ -62,7 +144,54 @@ router.get('/my', authMiddleware, async (req, res) => {
   }
 });
 
-// Get all applications (admin only)
+/**
+ * @swagger
+ * /api/applications:
+ *   get:
+ *     summary: Get all applications (Admin only)
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All applications retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                     description: Application ID
+ *                   userId:
+ *                     type: string
+ *                     description: User ID
+ *                   userName:
+ *                     type: string
+ *                     description: User name
+ *                   petId:
+ *                     type: string
+ *                     description: Pet ID
+ *                   petName:
+ *                     type: string
+ *                     description: Pet name
+ *                   status:
+ *                     type: string
+ *                     enum: [Pending, Approved, Rejected]
+ *                   appliedDate:
+ *                     type: string
+ *                     format: date-time
+ *                   adminNotes:
+ *                     type: string
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const applications = await Application.find()
@@ -87,7 +216,53 @@ router.get('/', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
-// Approve application (admin only)
+/**
+ * @swagger
+ * /api/applications/{id}/approve:
+ *   put:
+ *     summary: Approve an application (Admin only)
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Application ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               adminNotes:
+ *                 type: string
+ *                 description: Notes from admin about the approval
+ *     responses:
+ *       200:
+ *         description: Application approved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Application'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ *       500:
+ *         description: Internal server error
+ */
 router.put('/:id/approve', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const application = await Application.findById(req.params.id);
@@ -107,7 +282,53 @@ router.put('/:id/approve', authMiddleware, adminMiddleware, async (req, res) => 
   }
 });
 
-// Reject application (admin only)
+/**
+ * @swagger
+ * /api/applications/{id}/reject:
+ *   put:
+ *     summary: Reject an application (Admin only)
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Application ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               adminNotes:
+ *                 type: string
+ *                 description: Notes from admin about the rejection
+ *     responses:
+ *       200:
+ *         description: Application rejected successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Application'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ *       500:
+ *         description: Internal server error
+ */
 router.put('/:id/reject', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const application = await Application.findById(req.params.id);
@@ -127,7 +348,44 @@ router.put('/:id/reject', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
-// Withdraw application
+/**
+ * @swagger
+ * /api/applications/{id}:
+ *   delete:
+ *     summary: Withdraw an application
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Application ID
+ *     responses:
+ *       200:
+ *         description: Application withdrawn successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Application withdrawn"
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         description: Unauthorized to withdraw this application
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ *       500:
+ *         description: Internal server error
+ */
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const application = await Application.findById(req.params.id);

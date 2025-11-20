@@ -19,7 +19,9 @@
     "jsonwebtoken": "^9.0.0",
     "dotenv": "^16.0.3",
     "cors": "^2.8.5",
-    "validator": "^13.9.0"
+    "validator": "^13.9.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.22"
