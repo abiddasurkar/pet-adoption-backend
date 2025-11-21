@@ -8,6 +8,7 @@ const petSchema = new mongoose.Schema(
       trim: true,
       maxlength: [50, 'Name cannot exceed 50 characters']
     },
+
     species: { 
       type: String, 
       required: [true, 'Species is required'],
@@ -16,12 +17,14 @@ const petSchema = new mongoose.Schema(
         message: 'Species must be dog, cat, bird, rabbit, hamster, guinea_pig, fish, reptile, or other'
       }
     },
+
     breed: { 
       type: String, 
       required: [true, 'Breed is required'],
       trim: true,
       maxlength: [50, 'Breed cannot exceed 50 characters']
     },
+
     age: {
       type: String,
       enum: {
@@ -30,6 +33,7 @@ const petSchema = new mongoose.Schema(
       },
       required: [true, 'Age category is required']
     },
+
     size: {
       type: String,
       enum: {
@@ -37,6 +41,7 @@ const petSchema = new mongoose.Schema(
         message: 'Size must be small, medium, large, or extra_large'
       }
     },
+
     gender: {
       type: String,
       enum: {
@@ -45,6 +50,7 @@ const petSchema = new mongoose.Schema(
       },
       default: 'unknown'
     },
+
     healthStatus: {
       type: String,
       enum: {
@@ -53,6 +59,7 @@ const petSchema = new mongoose.Schema(
       },
       default: 'good'
     },
+
     temperament: [{
       type: String,
       enum: {
@@ -60,6 +67,8 @@ const petSchema = new mongoose.Schema(
         message: 'Invalid temperament value'
       }
     }],
+
+    // ✅ Base64 photo field
     photoBase64: {
       type: String,
       required: [true, 'Pet photo is required'],
@@ -70,12 +79,14 @@ const petSchema = new mongoose.Schema(
         message: 'Photo must be a valid base64 data URL'
       }
     },
+
     description: { 
       type: String, 
       required: [true, 'Description is required'],
       trim: true,
       maxlength: [1000, 'Description cannot exceed 1000 characters']
     },
+
     status: { 
       type: String, 
       enum: {
@@ -84,15 +95,18 @@ const petSchema = new mongoose.Schema(
       }, 
       default: 'available' 
     },
+
     adoptedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       default: null
     },
+
     adoptionDate: {
       type: Date,
       default: null
     },
+
     isFeatured: {
       type: Boolean,
       default: false
@@ -109,7 +123,7 @@ const petSchema = new mongoose.Schema(
   }
 );
 
-// Indexes for better query performance
+// Indexes
 petSchema.index({ status: 1 });
 petSchema.index({ species: 1 });
 petSchema.index({ breed: 1 });

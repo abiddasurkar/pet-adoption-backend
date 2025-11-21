@@ -1,179 +1,44 @@
 import express from 'express';
+import multer from 'multer';
 import Pet from '../models/Pet.js';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
+import { responseHandler } from '../utils/responseHandler.js';
 
 const router = express.Router();
 
-/**
- * @swagger
- * tags:
- *   name: Pets
- *   description: Pet management operations
- */
-
-/**
- * @swagger
- * /api/pets:
- *   get:
- *     summary: Get paginated list of available pets with advanced filtering
- *     tags: [Pets]
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           minimum: 1
- *           default: 1
- *         description: Page number
- *       - in: query
- *         name: search
- *         schema:
- *           type: string
- *         description: Search by pet name
- *       - in: query
- *         name: species
- *         schema:
- *           type: string
- *           enum: [dog, cat, bird, rabbit, hamster, guinea_pig, fish, reptile, other]
- *         description: Filter by species
- *       - in: query
- *         name: breed
- *         schema:
- *           type: string
- *         description: Filter by breed
- *       - in: query
- *         name: age
- *         schema:
- *           type: string
- *           enum: [baby, young, adult, senior]
- *         description: Filter by age category
- *       - in: query
- *         name: size
- *         schema:
- *           type: string
- *           enum: [small, medium, large, extra_large]
- *         description: Filter by size
- *       - in: query
- *         name: gender
- *         schema:
- *           type: string
- *           enum: [male, female, unknown]
- *         description: Filter by gender
- *       - in: query
- *         name: healthStatus
- *         schema:
- *           type: string
- *           enum: [excellent, good, fair, poor, critical]
- *         description: Filter by health status
- *       - in: query
- *         name: temperament
- *         schema:
- *           type: string
- *           enum: [calm, playful, shy, energetic, independent, affectionate, protective, social]
- *         description: Filter by temperament
- *     responses:
- *       200:
- *         description: List of pets retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 pets:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Pet'
- *                 currentPage:
- *                   type: integer
- *                   example: 1
- *                 totalPages:
- *                   type: integer
- *                   example: 5
- *       500:
- *         description: Internal server error
- */
-router.get('/', async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const search = req.query.search || '';
-    const species = req.query.species || '';
-    const breed = req.query.breed || '';
-    const age = req.query.age || '';
-    const size = req.query.size || '';
-    const gender = req.query.gender || '';
-    const healthStatus = req.query.healthStatus || '';
-    const temperament = req.query.temperament || '';
-
-    // Build filter - only show available pets
-    const filter = { status: 'available' };
-
-    // Text search by name
-    if (search) {
-      filter.name = { $regex: search, $options: 'i' };
+// Multer memory storage for image → base64 conversion
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files allowed'), false);
     }
-
-    // Exact match filters
-    if (species) filter.species = species;
-    if (breed) filter.breed = { $regex: breed, $options: 'i' };
-    if (age) filter.age = age;
-    if (size) filter.size = size;
-    if (gender) filter.gender = gender;
-    if (healthStatus) filter.healthStatus = healthStatus;
-
-    // Temperament filter (array field - check if includes value)
-    if (temperament) {
-      filter.temperament = { $in: [temperament] };
-    }
-
-    const limit = 9;
-    const skip = (page - 1) * limit;
-
-    const pets = await Pet.find(filter)
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
-
-    const total = await Pet.countDocuments(filter);
-
-    res.json({
-      success: true,
-      pets,
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-      totalPets: total,
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-/**
- * @swagger
- * /api/pets/featured:
- *   get:
- *     summary: Get featured pets
- *     tags: [Pets]
- *     responses:
- *       200:
- *         description: Featured pets retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 pets:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Pet'
- *       500:
- *         description: Internal server error
- */
+// Multer error handling middleware
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return responseHandler.error(res, 'File size exceeds 5MB limit', 400);
+    }
+    if (err.code === 'LIMIT_PART_COUNT') {
+      return responseHandler.error(res, 'Too many file parts', 400);
+    }
+    return responseHandler.error(res, `Upload error: ${err.message}`, 400);
+  }
+  if (err) {
+    return responseHandler.error(res, err.message, 400);
+  }
+  next();
+};
+
+// ---------------------------------------------------
+// GET: Featured Pets (Must come BEFORE /:id route)
+// ---------------------------------------------------
 router.get('/featured', async (req, res) => {
   try {
     const pets = await Pet.find({
@@ -183,346 +48,299 @@ router.get('/featured', async (req, res) => {
       .limit(6)
       .sort({ createdAt: -1 });
 
-    res.json({
-      success: true,
-      pets,
-    });
+    return responseHandler.success(res, pets, 'Featured pets retrieved successfully');
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    return responseHandler.error(res, err.message);
   }
 });
 
-/**
- * @swagger
- * /api/pets/{id}:
- *   get:
- *     summary: Get a specific pet by ID
- *     tags: [Pets]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Pet ID
- *     responses:
- *       200:
- *         description: Pet details retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Pet'
- *       404:
- *         description: Pet not found
- *       500:
- *         description: Internal server error
- */
+// ---------------------------------------------------
+// GET: All pets with filters + pagination
+// ---------------------------------------------------
+router.get('/', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 9;
+
+    const filter = {};
+    
+    // Only filter by 'available' if status not explicitly provided
+    if (!req.query.status) {
+      filter.status = 'available';
+    } else if (req.query.status !== 'all') {
+      filter.status = req.query.status;
+    }
+
+    // Apply other filters
+    if (req.query.search) {
+      filter.name = { $regex: req.query.search, $options: 'i' };
+    }
+    if (req.query.species) {
+      filter.species = req.query.species;
+    }
+    if (req.query.breed) {
+      filter.breed = { $regex: req.query.breed, $options: 'i' };
+    }
+    if (req.query.age) {
+      filter.age = req.query.age;
+    }
+    if (req.query.size) {
+      filter.size = req.query.size;
+    }
+    if (req.query.gender) {
+      filter.gender = req.query.gender;
+    }
+    if (req.query.healthStatus) {
+      filter.healthStatus = req.query.healthStatus;
+    }
+    if (req.query.temperament) {
+      filter.temperament = { $in: [req.query.temperament] };
+    }
+
+    const skip = (page - 1) * limit;
+
+    const pets = await Pet.find(filter)
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    const total = await Pet.countDocuments(filter);
+
+    return res.json({
+      success: true,
+      data: pets,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      totalPets: total,
+    });
+
+  } catch (err) {
+    console.error('Error fetching pets:', err);
+    return responseHandler.error(res, err.message);
+  }
+});
+
+// ---------------------------------------------------
+// GET: Single Pet by ID
+// ---------------------------------------------------
 router.get('/:id', async (req, res) => {
   try {
-    const pet = await Pet.findById(req.params.id).populate('adoptedBy', 'name email');
+    // Validate MongoDB ObjectId format
+    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      return responseHandler.error(res, 'Invalid pet ID format', 400);
+    }
 
+    const pet = await Pet.findById(req.params.id);
+    
     if (!pet) {
-      return res.status(404).json({ success: false, message: 'Pet not found' });
+      return responseHandler.notFound(res, 'Pet');
     }
 
-    res.json({
-      success: true,
-      data: pet,
-    });
+    return responseHandler.success(res, pet, 'Pet retrieved successfully');
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('Error fetching pet:', err);
+    return responseHandler.error(res, err.message);
   }
 });
 
-/**
- * @swagger
- * /api/pets:
- *   post:
- *     summary: Add a new pet (Admin only)
- *     tags: [Pets]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - species
- *               - breed
- *               - age
- *               - photoBase64
- *               - description
- *             properties:
- *               name:
- *                 type: string
- *                 example: "Buddy"
- *               species:
- *                 type: string
- *                 enum: [dog, cat, bird, rabbit, hamster, guinea_pig, fish, reptile, other]
- *                 example: "dog"
- *               breed:
- *                 type: string
- *                 example: "Golden Retriever"
- *               age:
- *                 type: string
- *                 enum: [baby, young, adult, senior]
- *                 example: "young"
- *               size:
- *                 type: string
- *                 enum: [small, medium, large, extra_large]
- *                 example: "large"
- *               gender:
- *                 type: string
- *                 enum: [male, female, unknown]
- *                 example: "male"
- *               healthStatus:
- *                 type: string
- *                 enum: [excellent, good, fair, poor, critical]
- *                 example: "excellent"
- *               temperament:
- *                 type: array
- *                 items:
- *                   type: string
- *                   enum: [calm, playful, shy, energetic, independent, affectionate, protective, social]
- *                 example: ["playful", "energetic", "affectionate"]
- *               photoBase64:
- *                 type: string
- *                 example: "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
- *               description:
- *                 type: string
- *                 example: "Friendly and energetic golden retriever"
- *               isFeatured:
- *                 type: boolean
- *                 example: false
- *     responses:
- *       201:
- *         description: Pet created successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   $ref: '#/components/schemas/Pet'
- *       400:
- *         description: Validation error
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Admin access required
- *       500:
- *         description: Internal server error
- */
-router.post('/', authMiddleware, adminMiddleware, async (req, res) => {
+// ---------------------------------------------------
+// POST: Create Pet (Admin) — Supports Base64 Images
+// ---------------------------------------------------
+router.post(
+  '/',
+  authMiddleware,
+  adminMiddleware,
+  upload.single('photo'),
+  handleMulterError,
+  async (req, res) => {
+    try {
+      let petData = req.body;
+
+      // If file uploaded → convert to base64
+      if (req.file) {
+        petData.photoBase64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+      }
+
+      // Comprehensive validation
+      const requiredFields = ['name', 'species', 'breed', 'age', 'description'];
+      const missingFields = requiredFields.filter(field => !petData[field]);
+
+      if (missingFields.length > 0) {
+        return responseHandler.error(
+          res,
+          `Missing required fields: ${missingFields.join(', ')}`,
+          400
+        );
+      }
+
+      if (!petData.photoBase64) {
+        return responseHandler.error(res, 'Pet photo is required', 400);
+      }
+
+      // Create pet with all fields
+      const pet = await Pet.create({
+        name: petData.name.trim(),
+        species: petData.species,
+        breed: petData.breed.trim(),
+        age: petData.age,
+        size: petData.size || 'medium',
+        gender: petData.gender || 'unknown',
+        healthStatus: petData.healthStatus || 'good',
+        temperament: Array.isArray(petData.temperament) ? petData.temperament : [],
+        description: petData.description.trim(),
+        photoBase64: petData.photoBase64,
+        isFeatured: petData.isFeatured === true || petData.isFeatured === 'true',
+        status: petData.status || 'available'
+      });
+
+      return responseHandler.success(res, pet, 'Pet created successfully', 201);
+
+    } catch (err) {
+      console.error('Error creating pet:', err);
+      
+      if (err.name === 'ValidationError') {
+        const errors = Object.values(err.errors).map(e => e.message);
+        return responseHandler.validationError(res, errors);
+      }
+
+      return responseHandler.error(res, err.message);
+    }
+  }
+);
+
+// ---------------------------------------------------
+// PUT: Update Pet (Admin) — Supports Base64
+// ---------------------------------------------------
+router.put(
+  '/:id',
+  authMiddleware,
+  adminMiddleware,
+  upload.single('photo'),
+  handleMulterError,
+  async (req, res) => {
+    try {
+      // Validate MongoDB ObjectId format
+      if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+        return responseHandler.error(res, 'Invalid pet ID format', 400);
+      }
+
+      const existingPet = await Pet.findById(req.params.id);
+      if (!existingPet) {
+        return responseHandler.notFound(res, 'Pet');
+      }
+
+      let updateData = req.body;
+
+      // Handle new uploaded image
+      if (req.file) {
+        updateData.photoBase64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+      }
+
+      // Trim string fields if present
+      if (updateData.name) updateData.name = updateData.name.trim();
+      if (updateData.breed) updateData.breed = updateData.breed.trim();
+      if (updateData.description) updateData.description = updateData.description.trim();
+
+      // Convert isFeatured to boolean if present
+      if (updateData.isFeatured !== undefined) {
+        updateData.isFeatured = updateData.isFeatured === true || updateData.isFeatured === 'true';
+      }
+
+      // Ensure temperament is an array
+      if (updateData.temperament && !Array.isArray(updateData.temperament)) {
+        updateData.temperament = [updateData.temperament];
+      }
+
+      const updatedPet = await Pet.findByIdAndUpdate(
+        req.params.id, 
+        updateData, 
+        {
+          new: true,
+          runValidators: true
+        }
+      );
+
+      return responseHandler.success(res, updatedPet, 'Pet updated successfully');
+
+    } catch (err) {
+      console.error('Error updating pet:', err);
+      
+      if (err.name === 'ValidationError') {
+        const errors = Object.values(err.errors).map(e => e.message);
+        return responseHandler.validationError(res, errors);
+      }
+      
+      return responseHandler.error(res, err.message);
+    }
+  }
+);
+
+// ---------------------------------------------------
+// PATCH: Partial Update Pet (Admin)
+// ---------------------------------------------------
+router.patch('/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const {
-      name,
-      species,
-      breed,
-      age,
-      size,
-      gender,
-      healthStatus,
-      temperament,
-      photoBase64,
-      description,
-      isFeatured,
-    } = req.body;
-
-    // Validation
-    if (!name || !species || !breed || !age || !photoBase64 || !description) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide all required fields: name, species, breed, age, photoBase64, description',
-      });
+    // Validate MongoDB ObjectId format
+    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      return responseHandler.error(res, 'Invalid pet ID format', 400);
     }
 
-    const pet = await Pet.create({
-      name,
-      species,
-      breed,
-      age,
-      size: size || undefined,
-      gender: gender || 'unknown',
-      healthStatus: healthStatus || 'good',
-      temperament: temperament || [],
-      photoBase64,
-      description,
-      isFeatured: isFeatured || false,
-      status: 'available',
-    });
+    const existingPet = await Pet.findById(req.params.id);
+    if (!existingPet) {
+      return responseHandler.notFound(res, 'Pet');
+    }
 
-    res.status(201).json({ success: true, data: pet });
+    const updateData = req.body;
+
+    // Trim string fields if present
+    if (updateData.name) updateData.name = updateData.name.trim();
+    if (updateData.breed) updateData.breed = updateData.breed.trim();
+    if (updateData.description) updateData.description = updateData.description.trim();
+
+    const updatedPet = await Pet.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      {
+        new: true,
+        runValidators: true
+      }
+    );
+
+    return responseHandler.success(res, updatedPet, 'Pet updated successfully');
+
   } catch (err) {
+    console.error('Error partially updating pet:', err);
+    
     if (err.name === 'ValidationError') {
-      return res.status(400).json({
-        success: false,
-        message: Object.values(err.errors)
-          .map((e) => e.message)
-          .join(', '),
-      });
+      const errors = Object.values(err.errors).map(e => e.message);
+      return responseHandler.validationError(res, errors);
     }
-    res.status(500).json({ success: false, message: err.message });
+    
+    return responseHandler.error(res, err.message);
   }
 });
 
-/**
- * @swagger
- * /api/pets/{id}:
- *   put:
- *     summary: Update a pet (Admin only)
- *     tags: [Pets]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Pet ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *               species:
- *                 type: string
- *               breed:
- *                 type: string
- *               age:
- *                 type: string
- *               size:
- *                 type: string
- *               gender:
- *                 type: string
- *               healthStatus:
- *                 type: string
- *               temperament:
- *                 type: array
- *                 items:
- *                   type: string
- *               photoBase64:
- *                 type: string
- *               description:
- *                 type: string
- *               status:
- *                 type: string
- *                 enum: [available, pending, adopted, not_available, fostered]
- *               isFeatured:
- *                 type: boolean
- *     responses:
- *       200:
- *         description: Pet updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   $ref: '#/components/schemas/Pet'
- *       400:
- *         description: Validation error
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Admin access required
- *       404:
- *         description: Pet not found
- *       500:
- *         description: Internal server error
- */
-router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // Check if pet exists
-    const petExists = await Pet.findById(id);
-    if (!petExists) {
-      return res.status(404).json({ success: false, message: 'Pet not found' });
-    }
-
-    const pet = await Pet.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true,
-    });
-
-    res.json({ success: true, data: pet });
-  } catch (err) {
-    if (err.name === 'ValidationError') {
-      return res.status(400).json({
-        success: false,
-        message: Object.values(err.errors)
-          .map((e) => e.message)
-          .join(', '),
-      });
-    }
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-/**
- * @swagger
- * /api/pets/{id}:
- *   delete:
- *     summary: Delete a pet (Admin only)
- *     tags: [Pets]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Pet ID
- *     responses:
- *       200:
- *         description: Pet deleted successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: "Pet deleted successfully"
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Admin access required
- *       404:
- *         description: Pet not found
- *       500:
- *         description: Internal server error
- */
+// ---------------------------------------------------
+// DELETE: Remove Pet (Admin)
+// ---------------------------------------------------
 router.delete('/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const pet = await Pet.findByIdAndDelete(req.params.id);
-
-    if (!pet) {
-      return res.status(404).json({ success: false, message: 'Pet not found' });
+    // Validate MongoDB ObjectId format
+    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      return responseHandler.error(res, 'Invalid pet ID format', 400);
     }
 
-    res.json({ success: true, message: 'Pet deleted successfully' });
+    const pet = await Pet.findByIdAndDelete(req.params.id);
+    
+    if (!pet) {
+      return responseHandler.notFound(res, 'Pet');
+    }
+
+    return responseHandler.success(res, { id: req.params.id }, 'Pet deleted successfully');
+
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('Error deleting pet:', err);
+    return responseHandler.error(res, err.message);
   }
 });
 
